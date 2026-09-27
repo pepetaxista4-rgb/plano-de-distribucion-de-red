@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NovaPixel — Plano de Distribución de Red</title>
+<style>
+:root{--bg:#0b1120;--card:#162032;--border:#283848;--text:#dce4f0;--muted:#7b8faa;--v10:#3b82f6;--v20:#8b5cf6;--v30:#10b981;--v40:#e6a020;--v50:#6b7280;--v60:#ef4444;--infra:#0ea5e9;--ok:#22c55e;--mnt:#eab308;--rep:#f97316;--off:#6b7280;--dep:#a855f7}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+.hdr{text-align:center;padding:1.5rem 1rem;background:linear-gradient(180deg,#0f172a,#162032);border-bottom:2px solid var(--border)}
+.hdr h1{font-size:2rem;color:#38bdf8;margin-bottom:.3rem}
+.hdr p{font-size:1rem;color:var(--muted)}
+.wrap{max-width:1640px;margin:0 auto;padding:1.5rem}
+
+/* Nuevo contenedor para garantizar tamaños legibles en móviles/laptops */
+.svg-container {
+  width: 100%;
+  overflow-x: auto;
+  background: var(--bg);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+svg{min-width:1400px;width:100%;height:auto;display:block;background:var(--bg)}
+
+.legend{display:flex;flex-wrap:wrap;gap:1rem;justify-content:center;margin:1rem 0 1.5rem;padding:1.2rem;background:var(--card);border-radius:10px;border:1px solid var(--border)}
+.leg{display:flex;align-items:center;gap:.4rem;font-size:.9rem}
+.ldot{width:14px;height:14px;border-radius:50%}
+.ldia{width:14px;height:14px;transform:rotate(45deg);border-radius:2px}
+.notes{padding:1.5rem;background:var(--card);border-radius:10px;border:1px solid var(--border);margin-top:1.5rem;font-size:.95rem;color:var(--muted)}
+.notes strong{color:#e2e8f0}
+.dev:hover rect,.dev:hover circle,.dev:hover polygon{filter:brightness(1.4);cursor:pointer}
+.dev:hover .dtip{opacity:1}
+.dtip{opacity:0;transition:opacity .2s;pointer-events:none}
+@media(max-width:900px){.hdr h1{font-size:1.4rem}.wrap{padding:.8rem}}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>🏢 NovaPixel — Plano de Distribución de Red sobre Planta</h1>
+  <p>Diagrama físico de distribución de red | Todos los dispositivos del inventario oficial | Sin datos inventados</p>
+</div>
+<div class="wrap">
+  <div class="legend" id="legend"></div>
+  
+  <div class="svg-container">
+    <svg id="fp" viewBox="0 0 1840 1600" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+  
+  <div class="notes" id="notes"></div>
+</div>
+<script>
+const NS='http://www.w3.org/2000/svg';
+const VCOL={0:'#0ea5e9',10:'#3b82f6',20:'#8b5cf6',30:'#10b981',40:'#e6a020',50:'#6b7280',60:'#ef4444'};
+const VNAME={0:'Infra/Gestión',10:'Administración',20:'Diseño',30:'Desarrollo',40:'Producción',50:'Invitados',60:'Seguridad'};
+const STAT_COL={operativo:'#22c55e',mantenimiento:'#eab308',reparacion:'#f97316',fuera:'#6b7280',deposito:'#a855f7'};
+const STAT_NAME={operativo:'Operativo',mantenimiento:'En Mantenimiento',reparacion:'En Reparación',fuera:'Fuera de Servicio',deposito:'En Depósito'};
+
+// Habitaciones redimensionadas para dar soporte a iconos y fuentes más grandes
+const rooms=[
+  {id:'recep',name:'Recepción',x:30,y:40,w:440,h:220,vlan:50},
+  {id:'dir',name:'Dirección',x:490,y:40,w:380,h:220,vlan:10},
+  {id:'rh',name:'Recursos Humanos',x:890,y:40,w:380,h:220,vlan:10},
+  {id:'reun',name:'Sala de Reuniones',x:1290,y:40,w:520,h:220,vlan:10},
+  {id:'admin',name:'Administración',x:30,y:290,w:380,h:270,vlan:10},
+  {id:'adminfin',name:'Admin. y Finanzas',x:430,y:290,w:380,h:270,vlan:10},
+  {id:'soporte',name:'Soporte / Sistemas',x:830,y:290,w:340,h:270,vlan:10},
+  {id:'comun',name:'Área Común',x:1190,y:290,w:620,h:270,vlan:10},
+  {id:'diseno',name:'Área de Diseño Gráfico',x:30,y:590,w:700,h:360,vlan:20},
+  {id:'devweb',name:'Área de Desarrollo Web',x:750,y:590,w:620,h:360,vlan:30},
+  {id:'deposito',name:'Depósito',x:1390,y:590,w:420,h:360,vlan:60},
+  {id:'estudio',name:'Estudio de Producción Audiovisual',x:30,y:980,w:1780,h:220,vlan:40},
+  {id:'server',name:'Sala de Servidores / Rack',x:30,y:1230,w:1780,h:200,vlan:0}
+];
+
+const devices=[
+  {id:'NPS-RT-001',type:'RT',model:'Fortinet FortiGate 60F',ip:'192.168.1.1',vlan:0,room:'server',status:'operativo',detail:'Router perimetral y firewall principal'},
+  {id:'NPS-SW-001',type:'SW',model:'Cisco Catalyst 2960X-48TS (Core, 48p)',ip:'192.168.1.2',vlan:0,room:'server',status:'operativo',detail:''},
+  {id:'NPS-SW-002',type:'SW',model:'TP-Link TL-SG2424P (Sec, 24p)',ip:'192.168.1.3',vlan:0,room:'diseno',status:'operativo',detail:'PoE'},
+  {id:'NPS-SW-003',type:'SW',model:'TP-Link TL-SG2424P (Sec, 24p)',ip:'192.168.1.4',vlan:0,room:'devweb',status:'operativo',detail:''},
+  {id:'NPS-AP-001',type:'AP',model:'Ubiquiti UniFi U6-Pro',ip:'192.168.1.10',vlan:0,room:'diseno',status:'operativo',detail:'SSID: NovaPixel-Staff'},
+  {id:'NPS-AP-002',type:'AP',model:'Ubiquiti UniFi U6-Pro',ip:'192.168.1.11',vlan:0,room:'devweb',status:'operativo',detail:'SSID: NovaPixel-Staff'},
+  {id:'NPS-AP-003',type:'AP',model:'Ubiquiti UniFi U6-Lite',ip:'192.168.1.12',vlan:50,room:'recep',status:'operativo',detail:'SSID: NovaPixel-Guest'},
+  {id:'NPS-AP-004',type:'AP',model:'Ubiquiti UniFi U6-Lite',ip:'192.168.1.13',vlan:10,room:'comun',status:'operativo',detail:'SSID: NovaPixel-Staff'},
+  {id:'NPS-SRV-001',type:'SV',model:'SRV-FILES-01 / Windows Server 2022',ip:'192.168.1.100',vlan:0,room:'server',status:'operativo',detail:'Servidor de archivos / NAS'},
+  {id:'NPS-SRV-002',type:'SV',model:'SRV-DEV-01 / Debian 12',ip:'192.168.1.101',vlan:0,room:'server',status:'operativo',detail:'Servidor de desarrollo / staging'},
+  {id:'NPS-SRV-003',type:'SV',model:'SRV-DB-01 / Debian 12',ip:'192.168.1.102',vlan:0,room:'server',status:'operativo',detail:'Servidor de base de datos'},
+  {id:'NPS-SRV-004',type:'SV',model:'SRV-NET-01 / Windows Server 2019',ip:'192.168.1.103',vlan:0,room:'server',status:'operativo',detail:'Servidor de servicios de red'},
+  {id:'NPS-SRV-005',type:'SV',model:'SRV-RENDER-01 / Ubuntu 22.04',ip:'192.168.40.100',vlan:40,room:'server',status:'mantenimiento',detail:'Servidor de renderizado'},
+  {id:'NPS-CAM-001',type:'CM',model:'Hikvision DS-2CD2143G2',ip:'192.168.60.11',vlan:60,room:'recep',status:'operativo',detail:''},
+  {id:'NPS-CAM-002',type:'CM',model:'Hikvision DS-2CD2183G1',ip:'192.168.60.12',vlan:60,room:'server',status:'operativo',detail:''},
+  {id:'NPS-CAM-003',type:'CM',model:'Dahua IPC-HFW2431T',ip:'192.168.60.13',vlan:60,room:'deposito',status:'operativo',detail:''},
+  {id:'NPS-CAM-004',type:'CM',model:'Hikvision DS-2DE4A225IW-DE',ip:'192.168.60.14',vlan:60,room:'comun',status:'operativo',detail:'PTZ'},
+  {id:'NPS-CAM-005',type:'CM',model:'Dahua IPC-HDW2231T',ip:'192.168.60.15',vlan:60,room:'estudio',status:'reparacion',detail:''},
+  {id:'NPS-CAM-006',type:'CM',model:'Sony FX3',ip:null,vlan:40,room:'estudio',status:'operativo',detail:'IP: — (Sin IP en inventario)'},
+  {id:'NPS-IMP-001',type:'PR',model:'HP LaserJet Pro M404',ip:'192.168.10.60',vlan:10,room:'comun',status:'operativo',detail:''},
+  {id:'NPS-IMP-002',type:'PR',model:'Epson EcoTank ET-4760',ip:'192.168.10.61',vlan:10,room:'diseno',status:'operativo',detail:''},
+  {id:'NPS-IMP-003',type:'PR',model:'Brother MFC-L8900CDW',ip:'192.168.10.62',vlan:10,room:'admin',status:'operativo',detail:''},
+  {id:'NPS-IMP-004',type:'PR',model:'HP DesignJet T230',ip:'192.168.20.60',vlan:20,room:'diseno',status:'mantenimiento',detail:''},
+  {id:'NPS-PC-001',type:'PC',model:'Dell OptiPlex 7090',ip:null,vlan:20,room:'diseno',status:'operativo',detail:''},
+  {id:'NPS-PC-002',type:'PC',model:'Dell OptiPlex 7090',ip:null,vlan:20,room:'diseno',status:'operativo',detail:''},
+  {id:'NPS-PC-003',type:'PC',model:'Apple iMac 24"',ip:null,vlan:20,room:'diseno',status:'operativo',detail:''},
+  {id:'NPS-PC-004',type:'PC',model:'Dell OptiPlex 3090',ip:null,vlan:30,room:'devweb',status:'operativo',detail:''},
+  {id:'NPS-PC-005',type:'PC',model:'Lenovo ThinkCentre M90q',ip:null,vlan:30,room:'devweb',status:'operativo',detail:''},
+  {id:'NPS-PC-006',type:'PC',model:'Dell OptiPlex 3090',ip:null,vlan:30,room:'devweb',status:'operativo',detail:''},
+  {id:'NPS-PC-007',type:'PC',model:'HP EliteDesk 800',ip:null,vlan:10,room:'admin',status:'operativo',detail:''},
+  {id:'NPS-PC-008',type:'PC',model:'HP EliteDesk 800',ip:null,vlan:10,room:'admin',status:'reparacion',detail:''},
+  {id:'NPS-PC-009',type:'PC',model:'Dell OptiPlex 3090',ip:null,vlan:10,room:'rh',status:'operativo',detail:''},
+  {id:'NPS-PC-010',type:'PC',model:'Apple Mac Studio',ip:null,vlan:40,room:'estudio',status:'operativo',detail:''},
+  {id:'NPS-PC-011',type:'PC',model:'Apple Mac Studio',ip:null,vlan:40,room:'estudio',status:'operativo',detail:''},
+  {id:'NPS-PC-012',type:'PC',model:'Dell OptiPlex 7090',ip:null,vlan:10,room:'server',status:'operativo',detail:''},
+  {id:'NPS-PC-013',type:'PC',model:'Dell OptiPlex 3090',ip:null,vlan:10,room:'comun',status:'operativo',detail:''},
+  {id:'NPS-PC-014',type:'PC',model:'HP ProDesk 400',ip:null,vlan:10,room:'recep',status:'operativo',detail:''},
+  {id:'NPS-NB-001',type:'NB',model:'Lenovo ThinkPad X1 Carbon',ip:null,vlan:10,room:'dir',status:'operativo',detail:''},
+  {id:'NPS-NB-002',type:'NB',model:'Lenovo ThinkPad T14',ip:null,vlan:30,room:'devweb',status:'operativo',detail:''},
+  {id:'NPS-NB-003',type:'NB',model:'Apple MacBook Pro 14"',ip:null,vlan:20,room:'diseno',status:'operativo',detail:''},
+  {id:'NPS-NB-004',type:'NB',model:'Apple MacBook Pro 16"',ip:null,vlan:40,room:'estudio',status:'operativo',detail:''},
+  {id:'NPS-NB-005',type:'NB',model:'Dell Latitude 5440',ip:null,vlan:10,room:'comun',status:'operativo',detail:'Área común / Marketing y Ventas'},
+  {id:'NPS-NB-006',type:'NB',model:'Dell Latitude 5440',ip:null,vlan:10,room:'comun',status:'operativo',detail:'Área común / Marketing y Ventas'},
+  {id:'NPS-NB-007',type:'NB',model:'Lenovo ThinkPad T14',ip:null,vlan:10,room:'rh',status:'operativo',detail:''},
+  {id:'NPS-NB-008',type:'NB',model:'HP EliteBook 840',ip:null,vlan:10,room:'adminfin',status:'mantenimiento',detail:''},
+  {id:'NPS-NB-009',type:'NB',model:'Apple MacBook Air 13"',ip:null,vlan:10,room:'dir',status:'operativo',detail:''},
+  {id:'NPS-NB-010',type:'NB',model:'Lenovo ThinkPad X1 Carbon',ip:null,vlan:30,room:'devweb',status:'operativo',detail:''},
+  {id:'NPS-NB-011',type:'NB',model:'Dell Latitude 5440',ip:null,vlan:10,room:'soporte',status:'operativo',detail:''},
+  {id:'NPS-NB-012',type:'NB',model:'Apple MacBook Pro 14"',ip:null,vlan:20,room:'diseno',status:'fuera',detail:''},
+  {id:'NPS-OTR-001',type:'OT',model:'Wacom Cintiq Pro 24',ip:null,vlan:20,room:'diseno',status:'operativo',detail:''},
+  {id:'NPS-OTR-002',type:'OT',model:'Wacom Intuos Pro',ip:null,vlan:20,room:'diseno',status:'operativo',detail:''},
+  {id:'NPS-OTR-003',type:'OT',model:'iPad Pro 12.9"',ip:null,vlan:20,room:'diseno',status:'operativo',detail:''},
+  {id:'NPS-OTR-004',type:'OT',model:'Sony A7 IV',ip:null,vlan:40,room:'estudio',status:'operativo',detail:''},
+  {id:'NPS-OTR-005',type:'OT',model:'Epson Scanner V850',ip:null,vlan:20,room:'diseno',status:'deposito',detail:''},
+  {id:'NPS-OTR-006',type:'PJ',model:'Proyector Sala de Reuniones',ip:null,vlan:10,room:'reun',status:'operativo',detail:''},
+  {id:'Ctrl Biométrico',type:'CA',model:'Control biométrico — Maximiliano Rojas',ip:null,vlan:60,room:'recep',status:'operativo',detail:'Sin ID NPS ni IP'},
+  {id:'Tarjeta Acceso',type:'CA',model:'Tarjeta de acceso — Hernán Quiroga',ip:null,vlan:60,room:'server',status:'operativo',detail:'Sin ID NPS ni IP'}
+];
+
+const prPoints=[
+  {id:'PR-001',cable:'Cat6',area:'Desarrollo Web',sw:'NPS-SW-001',port:1,status:'operativo',room:'devweb'},
+  {id:'PR-002',cable:'Cat6',area:'Estudio Prod. Audiovisual',sw:'NPS-SW-002',port:2,status:'operativo',room:'estudio'},
+  {id:'PR-003',cable:'Cat6',area:'Sala Reuniones',sw:'NPS-SW-001',port:3,status:'operativo',room:'reun'},
+  {id:'PR-004',cable:'Fibra óptica',area:'Administración',sw:'NPS-SW-002',port:4,status:'operativo',room:'admin'},
+  {id:'PR-005',cable:'Cat6',area:'Dirección',sw:'NPS-SW-001',port:5,status:'operativo',room:'dir'},
+  {id:'PR-006',cable:'Cat6',area:'Diseño Gráfico',sw:'NPS-SW-002',port:6,status:'operativo',room:'diseno'},
+  {id:'PR-007',cable:'Cat6',area:'Desarrollo Web',sw:'NPS-SW-001',port:7,status:'operativo',room:'devweb'},
+  {id:'PR-008',cable:'Fibra óptica',area:'Estudio Prod. Audiovisual',sw:'NPS-SW-002',port:8,status:'operativo',room:'estudio'},
+  {id:'PR-009',cable:'Cat6',area:'Sala Reuniones',sw:'NPS-SW-001',port:9,status:'operativo',room:'reun'},
+  {id:'PR-010',cable:'Cat6',area:'Administración',sw:'NPS-SW-002',port:10,status:'operativo',room:'admin'},
+  {id:'PR-011',cable:'Cat6',area:'Dirección',sw:'NPS-SW-001',port:11,status:'operativo',room:'dir'},
+  {id:'PR-012',cable:'Fibra óptica',area:'Diseño Gráfico',sw:'NPS-SW-002',port:12,status:'operativo',room:'diseno'},
+  {id:'PR-013',cable:'Cat6',area:'Desarrollo Web',sw:'NPS-SW-001',port:13,status:'mantenimiento',room:'devweb'},
+  {id:'PR-014',cable:'Cat6',area:'Estudio Prod. Audiovisual',sw:'NPS-SW-002',port:14,status:'operativo',room:'estudio'}
+];
+
+const vlans=[
+  {id:10,name:'Administración',subnet:'192.168.10.0/24'},
+  {id:20,name:'Diseño',subnet:'192.168.20.0/24'},
+  {id:30,name:'Desarrollo',subnet:'192.168.30.0/24'},
+  {id:40,name:'Producción',subnet:'192.168.40.0/24'},
+  {id:50,name:'Invitados',subnet:'192.168.50.0/24'},
+  {id:60,name:'Seguridad',subnet:'192.168.60.0/24'}
+];
+
+function el(tag,attrs,children){
+  const e=document.createElementNS(NS,tag);
+  if(attrs) Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));
+  if(children) (Array.isArray(children)?children:[children]).forEach(c=>e.appendChild(typeof c==='string'?document.createTextNode(c):c));
+  return e;
+}
+
+function getRoom(id){return rooms.find(r=>r.id===id);}
+
+function getDevPos(devList,room,idx){
+  const perRow = Math.floor((room.w - 40) / 120); 
+  const col = idx % perRow;
+  const row = Math.floor(idx / perRow);
+  return { x: room.x + 60 + col * 120, y: room.y + 65 + row * 85 };
+}
+
+function getPRPos(prList,room,idx,totalDevs){
+  const perRow = Math.floor((room.w - 40) / 90);
+  const devRows = Math.ceil(totalDevs / Math.floor((room.w - 40) / 120));
+  const startY = room.y + 65 + devRows * 85 + 20;
+  const col = idx % perRow;
+  const row = Math.floor(idx / perRow);
+  return { x: room.x + 50 + col * 90, y: startY + row * 45 };
+}
+
+function getSwitchCenter(switchId){
+  const d=devices.find(d=>d.id===switchId);
+  if(!d)return null;
+  const r=getRoom(d.room);
+  const devsInRoom=devices.filter(dd=>dd.room===d.room);
+  const idx=devsInRoom.indexOf(d);
+  return getDevPos(devsInRoom,r,idx);
+}
+
+function render(){
+  const svg=document.getElementById('fp');
+  svg.innerHTML='';
+
+  const defs=el('defs');
+  const glow=el('filter',{id:'glow',x:'-20%',y:'-20%',width:'140%',height:'140%'});
+  glow.appendChild(el('feGaussianBlur',{stdDeviation:'3',result:'blur'}));
+  glow.appendChild(el('feMerge',{},[el('feMergeNode',{in:'blur'}),el('feMergeNode',{in:'SourceGraphic'})]));
+  defs.appendChild(glow);
+  svg.appendChild(defs);
+
+  for(let gx=0;gx<=1840;gx+=40){
+    svg.appendChild(el('line',{x1:gx,y1:0,x2:gx,y2:1600,stroke:'#141e2e','stroke-width':.6}));
+  }
+  for(let gy=0;gy<=1600;gy+=40){
+    svg.appendChild(el('line',{x1:0,y1:gy,x2:1840,y2:gy,stroke:'#141e2e','stroke-width':.6}));
+  }
+
+  rooms.forEach(r=>{
+    const vc=VCOL[r.vlan]||VCOL[0];
+    const g=el('g',{class:'room'});
+    g.appendChild(el('rect',{x:r.x,y:r.y,width:r.w,height:r.h,rx:8,fill:'#141e2e',stroke:vc,'stroke-width':3,opacity:.92}));
+    g.appendChild(el('rect',{x:r.x,y:r.y,width:r.w,height:38,rx:8,fill:vc,opacity:.18}));
+    g.appendChild(el('text',{x:r.x+16,y:r.y+26,fill:vc,'font-size':18,'font-weight':700},r.name));
+    
+    if(r.vlan>0){
+      g.appendChild(el('text',{x:r.x+r.w-12,y:r.y+26,fill:vc,'font-size':15,opacity:.7,'text-anchor':'end'},'VLAN '+r.vlan));
+    } else {
+      g.appendChild(el('text',{x:r.x+r.w-12,y:r.y+26,fill:vc,'font-size':15,opacity:.7,'text-anchor':'end'},'INFRA'));
+    }
+    svg.appendChild(g);
+  });
+
+  prPoints.forEach(pr=>{
+    const r=getRoom(pr.room);
+    if(!r)return;
+    const devsInRoom=devices.filter(d=>d.room===pr.room);
+    const prIdx=prPoints.filter(p=>p.room===pr.room).indexOf(pr);
+    const pos=getPRPos(prPoints.filter(p=>p.room===pr.room),r,prIdx,devsInRoom.length);
+    const swPos=getSwitchCenter(pr.sw);
+    if(!swPos)return;
+    const cableCol=pr.cable==='Fibra óptica'?'#f59e0b':'#38bdf8';
+    const dash=pr.cable==='Fibra óptica'?'10,6':'6,4';
+    const opacity=pr.status==='mantenimiento'?.3:.5;
+    const mx=(pos.x+swPos.x)/2;
+    const my=Math.min(pos.y,swPos.y)-40;
+    const path=`M${pos.x},${pos.y} Q${mx},${my} ${swPos.x},${swPos.y}`;
+    svg.appendChild(el('path',{d:path,stroke:cableCol,'stroke-width':2.5,fill:'none','stroke-dasharray':dash,opacity:opacity}));
+  });
+
+  const roomDevMap={};
+  devices.forEach(d=>{if(!roomDevMap[d.room])roomDevMap[d.room]=[];roomDevMap[d.room].push(d);});
+
+  Object.entries(roomDevMap).forEach(([roomId,devs])=>{
+    const r=getRoom(roomId);
+    if(!r)return;
+    devs.forEach((d,idx)=>{
+      const pos=getDevPos(devs,r,idx);
+      const vc=VCOL[d.vlan]||VCOL[0];
+      const sc=STAT_COL[d.status]||STAT_COL.operativo;
+      const g=el('g',{class:'dev'});
+      
+      let shape;
+      if(d.type==='CM'){
+        shape=el('polygon',{points:`${pos.x},${pos.y-18} ${pos.x-16},${pos.y+12} ${pos.x+16},${pos.y+12}`,fill:vc,stroke:sc,'stroke-width':2});
+      } else if(d.type==='AP'){
+        shape=el('circle',{cx:pos.x,cy:pos.y,r:16,fill:vc,stroke:sc,'stroke-width':2});
+        g.appendChild(el('circle',{cx:pos.x,cy:pos.y,r:26,fill:'none',stroke:vc,'stroke-width':1.5,opacity:.3,'stroke-dasharray':'4,4'}));
+      } else if(d.type==='SW'){
+        shape=el('rect',{x:pos.x-28,y:pos.y-12,width:56,height:24,rx:4,fill:vc,stroke:sc,'stroke-width':2});
+      } else if(d.type==='SV'){
+        shape=el('rect',{x:pos.x-14,y:pos.y-22,width:28,height:44,rx:3,fill:vc,stroke:sc,'stroke-width':2});
+      } else if(d.type==='RT'){
+        shape=el('polygon',{points:`${pos.x-11},${pos.y-18} ${pos.x+11},${pos.y-18} ${pos.x+20},${pos.y-5} ${pos.x+20},${pos.y+5} ${pos.x+11},${pos.y+18} ${pos.x-11},${pos.y+18} ${pos.x-20},${pos.y+5} ${pos.x-20},${pos.y-5}`,fill:vc,stroke:sc,'stroke-width':2});
+      } else if(d.type==='PR'||d.type==='PJ'){
+        shape=el('rect',{x:pos.x-18,y:pos.y-12,width:36,height:24,rx:3,fill:vc,stroke:sc,'stroke-width':2});
+      } else if(d.type==='CA'){
+        shape=el('polygon',{points:`${pos.x},${pos.y-20} ${pos.x+18},${pos.y-9} ${pos.x+14},${pos.y+9} ${pos.x},${pos.y+20} ${pos.x-14},${pos.y+9} ${pos.x-18},${pos.y-9}`,fill:vc,stroke:sc,'stroke-width':2});
+      } else {
+        shape=el('circle',{cx:pos.x,cy:pos.y,r:16,fill:vc,stroke:sc,'stroke-width':2});
+      }
+      
+      if(d.status!=='operativo'){
+        shape.setAttribute('stroke-dasharray','4,3');
+        if(d.status==='fuera'){
+          shape.setAttribute('opacity','.45');
+        }
+      }
+      g.appendChild(shape);
+      
+      const typeLabels={RT:'FW',SW:'SW',AP:'AP',SV:'SRV',CM:'CAM',PR:'IMP',PC:'PC',NB:'NB',OT:'OT',CA:'ACC',PJ:'PRJ'};
+      g.appendChild(el('text',{x:pos.x,y:pos.y+4,'text-anchor':'middle',fill:'#fff','font-size':11,'font-weight':700},typeLabels[d.type]||'?'));
+      
+      const lbl=d.id.length>14?d.id.substring(0,14):d.id;
+      const txtEl=el('text',{x:pos.x,y:pos.y+34,'text-anchor':'middle',fill:vc,'font-size':12,'font-weight':700},lbl);
+      if(d.status==='fuera'){txtEl.setAttribute('text-decoration','line-through');txtEl.setAttribute('opacity','.5');}
+      g.appendChild(txtEl);
+      
+      if(d.ip){
+        g.appendChild(el('text',{x:pos.x,y:pos.y+48,'text-anchor':'middle',fill:'#86efac','font-size':11,'font-family':'monospace'},d.ip));
+      }
+      
+      const tipLines=[`${d.id} | ${d.model}`,`VLAN ${d.vlan} (${VNAME[d.vlan]||'Infra'})`,d.ip?`IP: ${d.ip}`:'Sin IP en inventario',`Estado: ${STAT_NAME[d.status]||d.status}`];
+      if(d.detail)tipLines.push(d.detail);
+      const titleEl=el('title',{},tipLines.join('\n'));
+      g.insertBefore(titleEl,g.firstChild);
+      svg.appendChild(g);
+    });
+  });
+
+  prPoints.forEach(pr=>{
+    const r=getRoom(pr.room);
+    if(!r)return;
+    const devsInRoom=devices.filter(d=>d.room===pr.room);
+    const roomPRs=prPoints.filter(p=>p.room===pr.room);
+    const prIdx=roomPRs.indexOf(pr);
+    const pos=getPRPos(roomPRs,r,prIdx,devsInRoom.length);
+    const cableCol=pr.cable==='Fibra óptica'?'#f59e0b':'#38bdf8';
+    const g=el('g');
+    
+    const ds=11;
+    g.appendChild(el('polygon',{points:`${pos.x},${pos.y-ds} ${pos.x+ds},${pos.y} ${pos.x},${pos.y+ds} ${pos.x-ds},${pos.y}`,fill:cableCol,stroke:pr.status==='mantenimiento'?'#eab308':'#556','stroke-width':1.5,opacity:pr.status==='mantenimiento'?.4:.85}));
+    g.appendChild(el('text',{x:pos.x,y:pos.y+3.5,'text-anchor':'middle',fill:'#fff','font-size':9,'font-weight':700},pr.id.replace('PR-','P')));
+    g.appendChild(el('text',{x:pos.x,y:pos.y+ds+14,'text-anchor':'middle',fill:cableCol,'font-size':9},pr.cable==='Fibra óptica'?'FIBRA':'Cat6'));
+    
+    const tipLines=[`${pr.id} — ${pr.cable}`,`Área: ${pr.area}`,`Switch: ${pr.sw} Puerto ${pr.port}`,`Estado: ${STAT_NAME[pr.status]||pr.status}`];
+    g.insertBefore(el('title',{},tipLines.join('\n')),g.firstChild);
+    svg.appendChild(g);
+  });
+
+  const aps=devices.filter(d=>d.type==='AP');
+  aps.forEach(ap=>{
+    const r=getRoom(ap.room);
+    const devsInRoom=devices.filter(d=>d.room===ap.room);
+    const idx=devsInRoom.indexOf(ap);
+    const pos=getDevPos(devsInRoom,r,idx);
+    const ssid=ap.detail.includes('Guest')?'NovaPixel-Guest':'NovaPixel-Staff';
+    const covR=ap.detail.includes('Guest')?120:90;
+    svg.appendChild(el('circle',{cx:pos.x,cy:pos.y,r:covR,fill:VCOL[ap.vlan],opacity:.06,stroke:VCOL[ap.vlan],'stroke-width':1.5,'stroke-dasharray':'6,4'}));
+    svg.appendChild(el('text',{x:pos.x,y:pos.y-covR-6,'text-anchor':'middle',fill:VCOL[ap.vlan],'font-size':11,opacity:.6},ssid));
+  });
+
+  const cams=devices.filter(d=>d.type==='CM');
+  cams.forEach(cam=>{
+    const r=getRoom(cam.room);
+    const devsInRoom=devices.filter(d=>d.room===cam.room);
+    const idx=devsInRoom.indexOf(cam);
+    const pos=getDevPos(devsInRoom,r,idx);
+    const fovLen=70;
+    const fovAngle=35;
+    const rad=fovAngle*Math.PI/180;
+    const x1=pos.x+fovLen*Math.cos(-rad);
+    const y1=pos.y+fovLen*Math.sin(-rad)+16;
+    const x2=pos.x+fovLen*Math.cos(rad);
+    const y2=pos.y+fovLen*Math.sin(rad)+16;
+    const g2=el('g',{opacity:cam.status==='reparacion'?.1:.15});
+    g2.appendChild(el('polygon',{points:`${pos.x},${pos.y+12} ${x1},${y1} ${x2},${y2}`,fill:VCOL[60],stroke:VCOL[60],'stroke-width':1}));
+    svg.appendChild(g2);
+  });
+
+  svg.appendChild(el('rect',{x:0,y:0,width:1840,height:45,fill:'#0f172a'}));
+  svg.appendChild(el('text',{x:920,y:28,'text-anchor':'middle',fill:'#38bdf8','font-size':18,'font-weight':700},'NOVAPIXEL — Plano de Distribución de Red sobre Planta'));
+
+  const barY=1460;
+  svg.appendChild(el('rect',{x:30,y:barY,width:1780,height:100,rx:8,fill:'#0f172a',stroke:VCOL[0],'stroke-width':2}));
+  svg.appendChild(el('text',{x:60,y:barY+24,fill:VCOL[0],'font-size':14,'font-weight':700},'VLANs:'));
+  vlans.forEach((v,i)=>{
+    const bx=60+i*230;
+    svg.appendChild(el('rect',{x:bx,y:barY+35,width:210,height:32,rx:6,fill:VCOL[v.id],opacity:.15,stroke:VCOL[v.id],'stroke-width':1.5}));
+    svg.appendChild(el('text',{x:bx+12,y:barY+55,fill:VCOL[v.id],'font-size':13,'font-weight':700},`VLAN ${v.id}`));
+    svg.appendChild(el('text',{x:bx+75,y:barY+55,fill:'#e2e8f0','font-size':12},v.name));
+    svg.appendChild(el('text',{x:bx+12,y:barY+80,fill:'#94a3b8','font-size':11,'font-family':'monospace'},v.subnet));
+    const cnt=devices.filter(d=>d.vlan===v.id).length;
+    svg.appendChild(el('text',{x:bx+195,y:barY+55,fill:VCOL[v.id],'font-size':12,'font-weight':600,'text-anchor':'end'},`${cnt} disp.`));
+  });
+  
+  const icnt=devices.filter(d=>d.vlan===0).length;
+  svg.appendChild(el('text',{x:1480,y:barY+24,fill:VCOL[0],'font-size':13},`Infra/Gestión: ${icnt} dispositivos | PRs: ${prPoints.length}`));
+  svg.appendChild(el('text',{x:30,y:barY+125,fill:'#7b8faa','font-size':11},'⚠ NPS-MON-001 a NPS-MON-016: Monitores sin ubicación definida en inventario — no representados en el plano'));
+
+  svg.appendChild(el('text',{x:1790,y:barY+24,fill:'#7b8faa','font-size':14,'text-anchor':'end','font-weight':700},'N ↑'));
+}
+
+function buildLegend(){
+  const lg=document.getElementById('legend');
+  let h='';
+  vlans.forEach(v=>{h+=`<div class="leg"><div class="ldot" style="background:${VCOL[v.id]}"></div>VLAN ${v.id} ${v.name}</div>`;});
+  h+=`<div class="leg"><div class="ldot" style="background:${VCOL[0]}"></div>Infra/Gestión</div>`;
+  h+='<div style="width:2px;height:24px;background:#334155;margin:0 .5rem"></div>';
+  Object.entries(STAT_COL).forEach(([k,v])=>{h+=`<div class="leg"><div class="ldot" style="background:${v};border:2px dashed ${v}"></div>${STAT_NAME[k]}</div>`;});
+  h+='<div style="width:2px;height:24px;background:#334155;margin:0 .5rem"></div>';
+  h+=`<div class="leg"><div class="ldia" style="background:#38bdf8"></div>Cat6</div>`;
+  h+=`<div class="leg"><div class="ldia" style="background:#f59e0b"></div>Fibra óptica</div>`;
+  h+='<div style="width:2px;height:24px;background:#334155;margin:0 .5rem"></div>';
+  const types=[['RT','Router/FW'],['SW','Switch'],['AP','Access Point'],['SV','Servidor'],['CM','Cámara'],['PR','Impresora'],['PC','Computadora'],['NB','Notebook'],['OT','Otro'],['CA','Ctrl Acceso'],['PJ','Proyector']];
+  types.forEach(([k,v])=>{h+=`<div class="leg" style="font-size:0.85rem"><strong>${k}</strong>=${v}</div>`;});
+  lg.innerHTML=h;
+}
+
+function buildNotes(){
+  const n=document.getElementById('notes');
+  n.innerHTML=`
+  <strong>Notas importantes:</strong><br>
+  • <strong>NPS-CAM-006 (Sony FX3)</strong>: Cámara sin IP asignada en inventario (IP: —). Se incluye en VLAN 40 por área (Estudio de Producción Audiovisual).<br>
+  • <strong>Control biométrico</strong> y <strong>Tarjeta de acceso</strong>: No poseen ID NPS ni IP en inventario. Responsables: Maximiliano Rojas (Recepción) y Hernán Quiroga (Sala de Servidores).<br>
+  • <strong>NPS-MON-001 a NPS-MON-016</strong>: 16 monitores inventariados sin ubicación ni detalle asignado — no se representan en el plano.<br>
+  • <strong>PR-013</strong>: Único punto de red en estado EN MANTENIMIENTO (Área de Desarrollo Web, SW-001 Puerto 13).<br>
+  • Los cables representados van desde cada PR en su área hasta el switch correspondiente (SW-001 en Sala de Servidores o SW-002 en Área de Diseño).<br>
+  • Las líneas punteadas azules = Cat6, amarillas = Fibra óptica.<br>
+  • Los círculos translúcidos alrededor de los APs representan la cobertura WiFi estimada.<br>
+  • Los conos semitransparentes rojos indican el campo de visión de las cámaras.<br>
+  • <strong>Total dispositivos:</strong> ${devices.length} | <strong>Total PRs:</strong> ${prPoints.length} | <strong>Total elementos:</strong> ${devices.length+prPoints.length}<br>
+  • Todos los datos provienen exclusivamente del inventario oficial. No se ha inventado ninguna IP, modelo, estado ni conexión.
+  `;
+}
+
+buildLegend();
+buildNotes();
+render();
+</script>
+</body>
+</html>
